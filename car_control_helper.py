@@ -12,19 +12,11 @@ def stop_car(car: carla.Vehicle) -> None:
     car.apply_control(control)
 
 # move car forward or backward
-def move_car(car: carla.Vehicle, reverse: bool = False, speed: float = 1.0) -> None:
+def move_car(car: carla.Vehicle, reverse: bool = False, steer : float = 0, speed: float = 1.0) -> None:
     control = car.get_control()
     control.throttle = speed  
     control.reverse = reverse  
     control.brake = 0        
-    control.steer = 0        
+    control.steer = steer        
     car.apply_control(control)
 
-# Turn the car (left or right)
-def turn_car(car: carla.Vehicle, direction: str, intensity: float = 1.0) -> None:
-    control = car.get_control()
-    if direction == 'left':
-        control.steer = -intensity  # Turn left
-    elif direction == 'right':
-        control.steer = intensity  # Turn right
-    car.apply_control(control)

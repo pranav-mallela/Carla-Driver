@@ -12,6 +12,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.spatial.kdtree as kd
+import carla
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
                 "/../../MotionPlanning/")
@@ -462,15 +463,56 @@ def design_obstacles(x, y):
 
     return ox, oy
 
+def detect_obstacles(world, car, start_x, end_x, start_y, end_y, steps = 1000):
+    """
+    world: the world
+    car: jake
+    start_x: x coordinate of the starting point of the parking lot
+    start_y: y coordinate of the starting point of the parking lot
+    end_x: x coordinate of the ending point of the parking lot
+    end_y: y coordinate of the ending point of the parking lot
+    steps: fineness of the interval 
+    """
 
+    x_range = np.linspace(start_x, end_x, steps) 
+    y_range = np.linspace(start_y, end_y, steps) 
+
+    collision_sensor = world.spawn_actor(
+        world.get_blueprint_library().find("sensor.other.collision"), 
+        carla.Transform(), # default coordinates 0 0 0 
+        attach_to=car
+    )
+
+    for x in x_range:
+        for y in y_range:
+            pass 
+        
 def main():
+    """
+    Bounding box for our parking spot:
+    Top-left:  -70.5,  153.412048
+    Top-right: -70.5, 193.412048
+    Bottom-left: -40.45, 193.412048
+    Bottom-right: -40.45, 153.412048
+    """
     print("start!")
 
+    start_x = -70.5
+    end_x = -40.45
+    start_y =  153.412048
+    end_y = 193.412048
     x, y = 51, 31
-    sx, sy, syaw0 = 10.0, 7.0, np.deg2rad(120.0)
-    gx, gy, gyaw0 = 45.0, 20.0, np.deg2rad(90.0)
+    
+    # jake_location = carla.Location(x=-58.468666, y=188.412048, z=7.642653)
+    # jake_rotation = carla.Rotation(pitch=0, yaw=90, roll=0) 
+    sx, sy, syaw0 = -58.468666, 188.412048, np.deg2rad(90.0) 
+    # goal_location = carla.Location(x=-50.468666, y=174.412048, z=7.642653)
+    # goal_rotation = carla.Rotation(pitch=0, yaw=0, roll=0) 
+    gx, gy, gyaw0 = -50.468666, 174.412048, np.deg2rad(0.0)
 
-    ox, oy = design_obstacles(x, y)
+    # TODO: figure out how to do this in CARLA
+    # ox, oy = design_obstacles(x, y)
+    # ox, oy = detect_obstacles(start_x, end_x, start_y, end_y)
 
     t0 = time.time()
     car = None # Replace with Jake
@@ -479,9 +521,9 @@ def main():
     t1 = time.time()
     print("running T: ", t1 - t0)
 
-    if not path:
-        print("Searching failed!")
-        return
+    # if not path:
+    #     print("Searching failed!")
+    #     return
 
 
 if __name__ == '__main__':
