@@ -15,7 +15,7 @@ import scipy.spatial.kdtree as kd
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
                 "/../../MotionPlanning/")
-
+import carla
 import astar as astar
 import reeds_shepp as rs
 
@@ -431,6 +431,57 @@ def calc_parameters(ox, oy, xyreso, yawreso, kdtree):
     return Para(minx, miny, minyaw, maxx, maxy, maxyaw,
                 xw, yw, yaww, xyreso, yawreso, ox, oy, kdtree)
 
+
+
+# Callback function to register collision events
+def collision_callback(event, collision_point_set):
+    impulse = event.normal_impulse
+    collision_location = impulse.location
+    print(f"Collision at: {collision_location}")
+    collision_point_set.add((impulse.x, impulse.y))  
+
+# Function to move the car to a location and check for collision
+def move_car(vehicle, target_location):
+    transform = carla.Transform(target_location)
+    vehicle.set_transform(transform)
+    time.sleep(0.5)
+
+def main():
+    # Connect to the CARLA server
+    client = carla.Client('localhost', 2000)
+    world = client.get_world()
+
+    # Create a vehicle in the world
+    blueprint = world.get_blueprint_library().filter('model3')[0]
+    spawn_point = world.get_map().get_spawn_points()[0]
+    vehicle = world.spawn_actor(blueprint, spawn_point)
+
+    # Create a collision sensor and attach it to the vehicle
+    collision_sensor = world.spawn_actor(
+        world.get_blueprint_library().find('sensor.other.collision'),
+        carla.Transform(),  # Attach it at the vehicle's location
+        attach_to=vehicle
+    )
+
+    # List to keep track of collision events
+    collision_point_set = set()
+
+    # Listen for collision events
+    collision_sensor.listen(lambda event: collision_callback(event, collision_point_set))
+
+    # Define the ranges for x and y
+    x_range = np.linspace(0, 100, 1000)  # 1000 points from 0 to 100
+    y_range = np.linspace(0, 100, 1000)  # 1000 points from 0 to 100
+
+    # Iterate through all x and y values and check for collision
+    for x in x_range:
+        for y in y_range:
+            target_location = carla.Location(x=x, y=y, z=0.1)
+            move_car(vehicle, target_location)
+
+    # Cleanup
+    vehicle.destroy()
+    collision_sensor.destroy()
 
 def design_obstacles(x, y):
     ox, oy = [], []
