@@ -16,7 +16,7 @@ import carla
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
                 "/../../MotionPlanning/")
-
+import carla
 import astar as astar
 import reeds_shepp as rs
 
@@ -433,6 +433,7 @@ def calc_parameters(ox, oy, xyreso, yawreso, kdtree):
                 xw, yw, yaww, xyreso, yawreso, ox, oy, kdtree)
 
 
+
 def design_obstacles(x, y):
     ox, oy = [], []
 
@@ -463,30 +464,32 @@ def design_obstacles(x, y):
 
     return ox, oy
 
-def detect_obstacles(world, car, start_x, end_x, start_y, end_y, steps = 1000):
+
+def detect_obstacles(world, start_x, end_x, start_y, end_y, steps = 100):
     """
+    raycast a rectangle and return all the obstacles in that rectangle
+    This is used to detect all the obstacles in the parking lot.
+    Maybe we can call this every loop as a cheat to detect obstacles
+
     world: the world
-    car: jake
     start_x: x coordinate of the starting point of the parking lot
     start_y: y coordinate of the starting point of the parking lot
     end_x: x coordinate of the ending point of the parking lot
     end_y: y coordinate of the ending point of the parking lot
     steps: fineness of the interval 
     """
-
+    obstacles = set()
     x_range = np.linspace(start_x, end_x, steps) 
-    y_range = np.linspace(start_y, end_y, steps) 
-
-    collision_sensor = world.spawn_actor(
-        world.get_blueprint_library().find("sensor.other.collision"), 
-        carla.Transform(), # default coordinates 0 0 0 
-        attach_to=car
-    )
-
+    # y_range = np.linspace(start_y, end_y, steps) # can potentially do two orientations to incraese accuracy
     for x in x_range:
-        for y in y_range:
-            pass 
-        
+        start = carla.Vector3D(x, start_y, 1)
+        end = carla.Vector3D(x, end_y, 1)
+        res = world.cast_ray(start, end)
+        for point in res:
+            obstacles.add((point.location.x, point.location.y))
+
+    return obstacles
+
 def main():
     """
     Bounding box for our parking spot:
