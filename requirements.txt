@@ -1,0 +1,9 @@
+pygame
+numpy
+carla
+ipykernel
+opencv-python
+ultralytics
+matplotlib
+heapdict
+scipy
