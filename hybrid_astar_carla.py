@@ -19,7 +19,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
 import carla
 import astar as astar
 import reeds_shepp as rs
-
+import car_control_helper as cch
 
 class C:  # Parameter config
     PI = math.pi
@@ -109,7 +109,7 @@ class QueuePrior:
         return self.queue.popitem()[0]  # pop out element with smallest priority
 
 
-def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
+def hybrid_astar_planning(sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
     # TODO: figure out why need rounding
     sxr, syr = round(sx / xyreso), round(sy / xyreso)
     gxr, gyr = round(gx / xyreso), round(gy / xyreso)
@@ -124,6 +124,7 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
     P = calc_parameters(ox, oy, xyreso, yawreso, kdtree)
 
     hmap = astar.calc_holonomic_heuristic_with_obstacle(ngoal, P.ox, P.oy, P.xyreso, 1.0)
+    print("hmap", len(hmap), len(hmap[0]))
     steer_set, direc_set = calc_motion_set()
     ind = calc_index(nstart, P)
     open_set, closed_set = {ind: nstart}, {}
@@ -133,7 +134,7 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
 
     while True:
         if not open_set:
-            return None
+            return None, closed_set
 
         ind = qp.get()
         n_curr = open_set[ind]
@@ -155,11 +156,14 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
 
         if update:
             fnode = fpath
+            print("direction and steer", fnode.direction, fnode.steer)
             break
 
         for i in range(len(steer_set)):
             node = calc_next_node(n_curr, ind, steer_set[i], direc_set[i], P)
-
+            if node:
+                
+                print("node", node)
             if not node:
                 continue
 
@@ -178,8 +182,8 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
                 if open_set[node_ind].cost > node.cost:
                     open_set[node_ind] = node
                     qp.put(node_ind, cur_cost)
-
-    return extract_path(closed_set, fnode, nstart)
+                    
+    return extract_path(closed_set, fnode, nstart), closed_set
 
 
 def extract_path(closed, ngoal, nstart):
@@ -384,7 +388,6 @@ def calc_rs_path_cost(rspath):
 def calc_hybrid_cost(node, hmap, P):
     cost = node.cost + \
            C.H_COST * hmap[node.xind - P.minx][node.yind - P.miny]
-
     return cost
 
 
@@ -413,7 +416,6 @@ def calc_index(node, P):
     ind = (node.yawind - P.minyaw) * P.xw * P.yw + \
           (node.yind - P.miny) * P.xw + \
           (node.xind - P.minx)
-
     return ind
 
 
@@ -487,8 +489,16 @@ def detect_obstacles(world, start_x, end_x, start_y, end_y, steps = 100):
         res = world.cast_ray(start, end)
         for point in res:
             obstacles.add((point.location.x, point.location.y))
+        res = world.cast_ray(end, start)
+        for point in res:
+            obstacles.add((point.location.x, point.location.y))
 
-    return obstacles
+    ox, oy = [], []
+    for x, y in obstacles:
+        ox.append(x)
+        oy.append(y)
+
+    return ox, oy 
 
 def main():
     """

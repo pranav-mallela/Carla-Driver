@@ -182,8 +182,16 @@ def calc_index(node, P):
 
 def calc_parameters(ox, oy, rr, reso):
     # Might need to remove round in CARLA...
-    minx, miny = round(min(ox)), round(min(oy))
-    maxx, maxy = round(max(ox)), round(max(oy))
+    # minx, miny = round(min(ox)), round(min(oy))
+    # maxx, maxy = round(max(ox)), round(max(oy))
+    
+    offsetx = 71 
+    offsety = -155
+
+    minx = round(-70.5 + offsetx)
+    maxx = round(-40.45 + offsetx)
+    miny =  round(153.412048 + offsety)
+    maxy = round(193.412048 + offsety)
     xw, yw = maxx - minx, maxy - miny
 
     motion = get_motion()
