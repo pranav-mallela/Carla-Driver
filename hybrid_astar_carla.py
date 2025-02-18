@@ -35,7 +35,8 @@ class C:  # Parameter config
     EXTEND_BOUND = 1  # collision check range extended
 
     GEAR_COST = 100.0  # switch back penalty cost
-    BACKWARD_COST = 5.0  # backward penalty cost
+    BACKWARD_COST = 1.0  # backward penalty cost
+    
     STEER_CHANGE_COST = 5.0  # steer angle change penalty cost
     STEER_ANGLE_COST = 1.0  # steer angle penalty cost
     H_COST = 15.0  # Heuristic cost penalty cost

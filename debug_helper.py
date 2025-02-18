@@ -1,6 +1,6 @@
 import carla
 
-def draw_line(world, start_coords, end_coords, color=carla.Color(255, 0, 0), thickness=0.1):
+def draw_line(world, start_coords, end_coords, color=carla.Color(255, 0, 0), thickness=0.1, life_time=10):
     """
     Draws a line in the CARLA world between two points.
 
@@ -15,11 +15,11 @@ def draw_line(world, start_coords, end_coords, color=carla.Color(255, 0, 0), thi
     end = carla.Vector3D(*end_coords)
 
     # Draw the line
-    world.debug.draw_line(start, end, color=color, thickness=thickness, life_time=10)
+    world.debug.draw_line(start, end, color=color, thickness=thickness, life_time=life_time)
 
-def draw_point(world, coordinate,  color=carla.Color(255, 0, 0), size=0.1):
+def draw_point(world, coordinate,  color=carla.Color(255, 0, 0), size=0.1, life_time=life_time):
     location = carla.Location(x=coordinate[0], y=coordinate[1], z=coordinate[2])
-    world.debug.draw_point(location, size=size, color=color, life_time=10)
+    world.debug.draw_point(location, size=size, color=color, life_time=life_time)
 
 # Example usage
 if __name__ == "__main__":
