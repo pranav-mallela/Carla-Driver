@@ -1,6 +1,6 @@
 import carla
 from typing import Tuple, List, Dict
-
+import time 
 # init the car's parameters such as torque and stuff if needed
 def init_car(car: carla.Vehicle) -> None:
     
@@ -113,3 +113,47 @@ def turn_car(car: carla.Vehicle, direction: str, intensity: float = 1.0) -> None
     elif direction == 'right':
         control.steer = intensity  # Turn right
     car.apply_control(control)
+
+
+
+def follow_path(car: carla.Vehicle, path: list, speed: float = 1.0, tolerance: float = 0.5):
+    """
+    Moves the car along a series of waypoints (path).
+    
+    :param car: The car object.
+    :param path: List of (x, y) waypoints the car needs to follow.
+    :param speed: Speed at which the car should move.
+    :param tolerance: Distance tolerance to consider the car has reached the waypoint.
+    """
+    for idx, (target_x, target_y) in enumerate(path):
+        print(f"Moving towards waypoint {idx+1}: ({target_x}, {target_y})")
+        
+        # Move the car towards the waypoint
+        while True:
+            # Get car's current position
+            current_transform = car.get_transform()
+            car_x, car_y = current_transform.location.x, current_transform.location.y
+
+            # Calculate distance to the waypoint
+            distance_to_target = ((car_x - target_x)**2 + (car_y - target_y)**2)**0.5
+            
+            if distance_to_target < tolerance:
+                print(f"Arrived at waypoint {idx+1}")
+                break  # Break the loop once we reach the waypoint
+            
+            # Move car towards the waypoint
+            move_car(car, reverse=False, speed=speed)
+            
+            # Adjust the car's orientation towards the target if needed (e.g., if car is not aligned)
+            if car_x != target_x or car_y != target_y:
+                # Calculate direction to turn
+                if target_x > car_x:
+                    turn_car(car, 'right')
+                elif target_x < car_x:
+                    turn_car(car, 'left')
+
+            time.sleep(0.5)  # Adjust sleep time based on your system's speed
+
+    # Once all waypoints are completed, stop the car
+    stop_car(car)
+    print("Car has reached the destination.")
