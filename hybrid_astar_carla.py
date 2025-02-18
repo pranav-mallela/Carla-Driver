@@ -12,13 +12,14 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.spatial.kdtree as kd
+import carla
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
                 "/../../MotionPlanning/")
 import carla
 import astar as astar
 import reeds_shepp as rs
-
+import car_control_helper as cch
 
 class C:  # Parameter config
     PI = math.pi
@@ -108,7 +109,7 @@ class QueuePrior:
         return self.queue.popitem()[0]  # pop out element with smallest priority
 
 
-def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
+def hybrid_astar_planning(sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
     # TODO: figure out why need rounding
     sxr, syr = round(sx / xyreso), round(sy / xyreso)
     gxr, gyr = round(gx / xyreso), round(gy / xyreso)
@@ -123,6 +124,7 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
     P = calc_parameters(ox, oy, xyreso, yawreso, kdtree)
 
     hmap = astar.calc_holonomic_heuristic_with_obstacle(ngoal, P.ox, P.oy, P.xyreso, 1.0)
+    print("hmap", len(hmap), len(hmap[0]))
     steer_set, direc_set = calc_motion_set()
     ind = calc_index(nstart, P)
     open_set, closed_set = {ind: nstart}, {}
@@ -132,7 +134,7 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
 
     while True:
         if not open_set:
-            return None
+            return None, closed_set
 
         ind = qp.get()
         n_curr = open_set[ind]
@@ -154,11 +156,14 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
 
         if update:
             fnode = fpath
+            print("direction and steer", fnode.direction, fnode.steer)
             break
 
         for i in range(len(steer_set)):
             node = calc_next_node(n_curr, ind, steer_set[i], direc_set[i], P)
-
+            if node:
+                
+                print("node", node)
             if not node:
                 continue
 
@@ -177,8 +182,8 @@ def hybrid_astar_planning(car, sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawre
                 if open_set[node_ind].cost > node.cost:
                     open_set[node_ind] = node
                     qp.put(node_ind, cur_cost)
-
-    return extract_path(closed_set, fnode, nstart)
+                    
+    return extract_path(closed_set, fnode, nstart), closed_set
 
 
 def extract_path(closed, ngoal, nstart):
@@ -383,7 +388,6 @@ def calc_rs_path_cost(rspath):
 def calc_hybrid_cost(node, hmap, P):
     cost = node.cost + \
            C.H_COST * hmap[node.xind - P.minx][node.yind - P.miny]
-
     return cost
 
 
@@ -412,7 +416,6 @@ def calc_index(node, P):
     ind = (node.yawind - P.minyaw) * P.xw * P.yw + \
           (node.yind - P.miny) * P.xw + \
           (node.xind - P.minx)
-
     return ind
 
 
@@ -432,56 +435,6 @@ def calc_parameters(ox, oy, xyreso, yawreso, kdtree):
                 xw, yw, yaww, xyreso, yawreso, ox, oy, kdtree)
 
 
-
-# Callback function to register collision events
-def collision_callback(event, collision_point_set):
-    impulse = event.normal_impulse
-    collision_location = impulse.location
-    print(f"Collision at: {collision_location}")
-    collision_point_set.add((impulse.x, impulse.y))  
-
-# Function to move the car to a location and check for collision
-def move_car(vehicle, target_location):
-    transform = carla.Transform(target_location)
-    vehicle.set_transform(transform)
-    time.sleep(0.5)
-
-def main():
-    # Connect to the CARLA server
-    client = carla.Client('localhost', 2000)
-    world = client.get_world()
-
-    # Create a vehicle in the world
-    blueprint = world.get_blueprint_library().filter('model3')[0]
-    spawn_point = world.get_map().get_spawn_points()[0]
-    vehicle = world.spawn_actor(blueprint, spawn_point)
-
-    # Create a collision sensor and attach it to the vehicle
-    collision_sensor = world.spawn_actor(
-        world.get_blueprint_library().find('sensor.other.collision'),
-        carla.Transform(),  # Attach it at the vehicle's location
-        attach_to=vehicle
-    )
-
-    # List to keep track of collision events
-    collision_point_set = set()
-
-    # Listen for collision events
-    collision_sensor.listen(lambda event: collision_callback(event, collision_point_set))
-
-    # Define the ranges for x and y
-    x_range = np.linspace(0, 100, 1000)  # 1000 points from 0 to 100
-    y_range = np.linspace(0, 100, 1000)  # 1000 points from 0 to 100
-
-    # Iterate through all x and y values and check for collision
-    for x in x_range:
-        for y in y_range:
-            target_location = carla.Location(x=x, y=y, z=0.1)
-            move_car(vehicle, target_location)
-
-    # Cleanup
-    vehicle.destroy()
-    collision_sensor.destroy()
 
 def design_obstacles(x, y):
     ox, oy = [], []
@@ -514,14 +467,65 @@ def design_obstacles(x, y):
     return ox, oy
 
 
+def detect_obstacles(world, start_x, end_x, start_y, end_y, steps = 100):
+    """
+    raycast a rectangle and return all the obstacles in that rectangle
+    This is used to detect all the obstacles in the parking lot.
+    Maybe we can call this every loop as a cheat to detect obstacles
+
+    world: the world
+    start_x: x coordinate of the starting point of the parking lot
+    start_y: y coordinate of the starting point of the parking lot
+    end_x: x coordinate of the ending point of the parking lot
+    end_y: y coordinate of the ending point of the parking lot
+    steps: fineness of the interval 
+    """
+    obstacles = set()
+    x_range = np.linspace(start_x, end_x, steps) 
+    # y_range = np.linspace(start_y, end_y, steps) # can potentially do two orientations to incraese accuracy
+    for x in x_range:
+        start = carla.Vector3D(x, start_y, 1)
+        end = carla.Vector3D(x, end_y, 1)
+        res = world.cast_ray(start, end)
+        for point in res:
+            obstacles.add((point.location.x, point.location.y))
+        res = world.cast_ray(end, start)
+        for point in res:
+            obstacles.add((point.location.x, point.location.y))
+
+    ox, oy = [], []
+    for x, y in obstacles:
+        ox.append(x)
+        oy.append(y)
+
+    return ox, oy 
+
 def main():
+    """
+    Bounding box for our parking spot:
+    Top-left:  -70.5,  153.412048
+    Top-right: -70.5, 193.412048
+    Bottom-left: -40.45, 193.412048
+    Bottom-right: -40.45, 153.412048
+    """
     print("start!")
 
+    start_x = -70.5
+    end_x = -40.45
+    start_y =  153.412048
+    end_y = 193.412048
     x, y = 51, 31
-    sx, sy, syaw0 = 10.0, 7.0, np.deg2rad(120.0)
-    gx, gy, gyaw0 = 45.0, 20.0, np.deg2rad(90.0)
+    
+    # jake_location = carla.Location(x=-58.468666, y=188.412048, z=7.642653)
+    # jake_rotation = carla.Rotation(pitch=0, yaw=90, roll=0) 
+    sx, sy, syaw0 = -58.468666, 188.412048, np.deg2rad(90.0) 
+    # goal_location = carla.Location(x=-50.468666, y=174.412048, z=7.642653)
+    # goal_rotation = carla.Rotation(pitch=0, yaw=0, roll=0) 
+    gx, gy, gyaw0 = -50.468666, 174.412048, np.deg2rad(0.0)
 
-    ox, oy = design_obstacles(x, y)
+    # TODO: figure out how to do this in CARLA
+    # ox, oy = design_obstacles(x, y)
+    # ox, oy = detect_obstacles(start_x, end_x, start_y, end_y)
 
     t0 = time.time()
     car = None # Replace with Jake
@@ -530,9 +534,9 @@ def main():
     t1 = time.time()
     print("running T: ", t1 - t0)
 
-    if not path:
-        print("Searching failed!")
-        return
+    # if not path:
+    #     print("Searching failed!")
+    #     return
 
 
 if __name__ == '__main__':
