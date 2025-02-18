@@ -1,6 +1,8 @@
 import carla
 from typing import Tuple, List, Dict
 import time 
+import math 
+
 # init the car's parameters such as torque and stuff if needed
 def init_car(car: carla.Vehicle) -> None:
     
@@ -96,13 +98,13 @@ def stop_car(car: carla.Vehicle) -> None:
     car.apply_control(control)
 
 # move car forward or backward
-def move_car(car: carla.Vehicle, reverse: bool = False, speed: float = 1.0) -> None:
+def move_car(car: carla.Vehicle, reverse: bool = False, steer : float = 0, speed: float = 1.0) -> None:
     control = car.get_control()
     control.hand_brake = False
     control.throttle = speed  
     control.reverse = reverse  
     control.brake = 0        
-    control.steer = 0        
+    control.steer = steer        
     car.apply_control(control)
 
 # Turn the car (left or right)
@@ -114,46 +116,55 @@ def turn_car(car: carla.Vehicle, direction: str, intensity: float = 1.0) -> None
         control.steer = intensity  # Turn right
     car.apply_control(control)
 
-
-
-def follow_path(car: carla.Vehicle, path: list, speed: float = 1.0, tolerance: float = 0.5):
+def distance(p1, p2):
+    return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+def follow_path(car: carla.Vehicle, path: list, offset_x : float = 0, offset_y: float = 0, tolerance: float = 0.5):
     """
     Moves the car along a series of waypoints (path).
     
     :param car: The car object.
     :param path: List of (x, y) waypoints the car needs to follow.
-    :param speed: Speed at which the car should move.
+    :param offset_x: The amount of offset in the x direction
+    :param offset_y: The amount of offset in the y direction
     :param tolerance: Distance tolerance to consider the car has reached the waypoint.
     """
-    for idx, (target_x, target_y) in enumerate(path):
-        print(f"Moving towards waypoint {idx+1}: ({target_x}, {target_y})")
+    # first teleport the vehicle to the starting point 
+    transform = carla.Transform(
+        carla.Location(x=path.x[0] - offset_x, y=path.y[0] - offset_y, z=1),
+        carla.Rotation(yaw=path.yaw[0] - 90)
+    )
+    car.set_transform(transform)
+    time.sleep(1)
+
+
+    for idx in range(len(path.x)):
+        x, y, yaw, dir = path.x[idx] - offset_x, path.y[idx] - offset_y, path.yaw[idx], path.direction[idx]
+        dir = False if dir == 1 else True 
+        # -3.141592653589793 = left -> -1 
+        # -pi/2 = straight 
+        # 0 = right 
+        yaw += math.pi / 2
+        # yaw *= -1 # carla's yaw angle is reversed 
+        yaw /= math.pi / 2  # carla expect angles to be in [-1, 1]
+
+        print(f"Moving towards waypoint {idx+1}: ({x}, {y}) with steer intensity {yaw}")
+        move_car(car, dir, yaw, 0.4)
         
         # Move the car towards the waypoint
         while True:
             # Get car's current position
             current_transform = car.get_transform()
             car_x, car_y = current_transform.location.x, current_transform.location.y
-
+            # car_y += 0.4 # adjust for car's length
             # Calculate distance to the waypoint
-            distance_to_target = ((car_x - target_x)**2 + (car_y - target_y)**2)**0.5
+            distance_to_target = distance((car_x, car_y), (x, y)) 
             
             if distance_to_target < tolerance:
                 print(f"Arrived at waypoint {idx+1}")
+                stop_car(car)
                 break  # Break the loop once we reach the waypoint
             
-            # Move car towards the waypoint
-            move_car(car, reverse=False, speed=speed)
-            
-            # Adjust the car's orientation towards the target if needed (e.g., if car is not aligned)
-            if car_x != target_x or car_y != target_y:
-                # Calculate direction to turn
-                if target_x > car_x:
-                    turn_car(car, 'right')
-                elif target_x < car_x:
-                    turn_car(car, 'left')
-
-            time.sleep(0.5)  # Adjust sleep time based on your system's speed
-
+            time.sleep(0.05)
     # Once all waypoints are completed, stop the car
     stop_car(car)
     print("Car has reached the destination.")
