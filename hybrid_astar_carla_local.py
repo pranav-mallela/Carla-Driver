@@ -12,14 +12,12 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.spatial.kdtree as kd
-import carla
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
                 "/../../MotionPlanning/")
-import carla
 import astar as astar
 import reeds_shepp as rs
-import car_control_helper as cch
+
 
 class C:  # Parameter config
     PI = math.pi
@@ -35,22 +33,20 @@ class C:  # Parameter config
     EXTEND_BOUND = 1  # collision check range extended
 
     GEAR_COST = 100.0  # switch back penalty cost
-    BACKWARD_COST = 1.0  # backward penalty cost
-    
+    BACKWARD_COST = 5.0  # backward penalty cost
     STEER_CHANGE_COST = 5.0  # steer angle change penalty cost
     STEER_ANGLE_COST = 1.0  # steer angle penalty cost
     H_COST = 15.0  # Heuristic cost penalty cost
 
-    RF = 3.655  # [m] distance from rear to vehicle front end of vehicle
-    RB = 0.8577  # [m] distance from rear to vehicle back end of vehicle
-    W = 2.006  # [m] width of vehicle
-    WD = 1.529 * W  # [m] distance between left-right wheels
-    WB = 2.8191  # [m] Wheel base
-    TR = 37.0  # [m] Tyre radius
-    TW = 0.2  # [m] Tyre width
-    MAX_STEER = 0.61  # [rad] maximum steering angle
-
-
+    # TODO: FIND OUT RESPECTIVE NUMBERS ON CARLA'S CAR
+    RF = 4.5  # [m] distance from rear to vehicle front end of vehicle
+    RB = 1.0  # [m] distance from rear to vehicle back end of vehicle
+    W = 3.0  # [m] width of vehicle
+    WD = 0.7 * W  # [m] distance between left-right wheels
+    WB = 3.5  # [m] Wheel base
+    TR = 0.5  # [m] Tyre radius
+    TW = 1  # [m] Tyre width
+    MAX_STEER = 0.6  # [rad] maximum steering angle
 
 
 class Node:
@@ -126,7 +122,6 @@ def hybrid_astar_planning(sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
     P = calc_parameters(ox, oy, xyreso, yawreso, kdtree)
 
     hmap = astar.calc_holonomic_heuristic_with_obstacle(ngoal, P.ox, P.oy, P.xyreso, 1.0)
-    print("hmap", len(hmap), len(hmap[0]))
     steer_set, direc_set = calc_motion_set()
     ind = calc_index(nstart, P)
     open_set, closed_set = {ind: nstart}, {}
@@ -136,7 +131,7 @@ def hybrid_astar_planning(sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
 
     while True:
         if not open_set:
-            return None, closed_set
+            return None
 
         ind = qp.get()
         n_curr = open_set[ind]
@@ -155,17 +150,13 @@ def hybrid_astar_planning(sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
         We might need to modify this to do it only once per loop or something?
         """
         update, fpath = update_node_with_analystic_expantion(n_curr, ngoal, P)
-
         if update:
             fnode = fpath
-            print("direction and steer", fnode.direction, fnode.steer)
             break
 
         for i in range(len(steer_set)):
             node = calc_next_node(n_curr, ind, steer_set[i], direc_set[i], P)
-            if node:
-                
-                print("node", node)
+
             if not node:
                 continue
 
@@ -184,8 +175,8 @@ def hybrid_astar_planning(sx, sy, syaw, gx, gy, gyaw, ox, oy, xyreso, yawreso):
                 if open_set[node_ind].cost > node.cost:
                     open_set[node_ind] = node
                     qp.put(node_ind, cur_cost)
-                    
-    return extract_path(closed_set, fnode, nstart), closed_set
+
+    return extract_path(closed_set, fnode, nstart)
 
 
 def extract_path(closed, ngoal, nstart):
@@ -426,6 +417,7 @@ def calc_parameters(ox, oy, xyreso, yawreso, kdtree):
     miny = round(min(oy) / xyreso)
     maxx = round(max(ox) / xyreso)
     maxy = round(max(oy) / xyreso)
+    print(minx, miny, maxx, maxy)
 
     xw, yw = maxx - minx, maxy - miny
 
@@ -437,6 +429,13 @@ def calc_parameters(ox, oy, xyreso, yawreso, kdtree):
                 xw, yw, yaww, xyreso, yawreso, ox, oy, kdtree)
 
 
+
+# Callback function to register collision events
+def collision_callback(event, collision_point_set):
+    impulse = event.normal_impulse
+    collision_location = impulse.location
+    print(f"Collision at: {collision_location}")
+    collision_point_set.add((impulse.x, impulse.y))  
 
 def design_obstacles(x, y):
     ox, oy = [], []
@@ -469,76 +468,21 @@ def design_obstacles(x, y):
     return ox, oy
 
 
-def detect_obstacles(world, start_x, end_x, start_y, end_y, steps = 100):
-    """
-    raycast a rectangle and return all the obstacles in that rectangle
-    This is used to detect all the obstacles in the parking lot.
-    Maybe we can call this every loop as a cheat to detect obstacles
-
-    world: the world
-    start_x: x coordinate of the starting point of the parking lot
-    start_y: y coordinate of the starting point of the parking lot
-    end_x: x coordinate of the ending point of the parking lot
-    end_y: y coordinate of the ending point of the parking lot
-    steps: fineness of the interval 
-    """
-    obstacles = set()
-    x_range = np.linspace(start_x, end_x, steps) 
-    # y_range = np.linspace(start_y, end_y, steps) # can potentially do two orientations to incraese accuracy
-    for x in x_range:
-        start = carla.Vector3D(x, start_y, 1)
-        end = carla.Vector3D(x, end_y, 1)
-        res = world.cast_ray(start, end)
-        for point in res:
-            obstacles.add((point.location.x, point.location.y))
-        res = world.cast_ray(end, start)
-        for point in res:
-            obstacles.add((point.location.x, point.location.y))
-
-    ox, oy = [], []
-    for x, y in obstacles:
-        ox.append(x)
-        oy.append(y)
-
-    return ox, oy 
-
 def main():
-    """
-    Bounding box for our parking spot:
-    Top-left:  -70.5,  153.412048
-    Top-right: -70.5, 193.412048
-    Bottom-left: -40.45, 193.412048
-    Bottom-right: -40.45, 153.412048
-    """
     print("start!")
 
-    start_x = -70.5
-    end_x = -40.45
-    start_y =  153.412048
-    end_y = 193.412048
     x, y = 51, 31
-    
-    # jake_location = carla.Location(x=-58.468666, y=188.412048, z=7.642653)
-    # jake_rotation = carla.Rotation(pitch=0, yaw=90, roll=0) 
-    sx, sy, syaw0 = -58.468666, 188.412048, np.deg2rad(90.0) 
-    # goal_location = carla.Location(x=-50.468666, y=174.412048, z=7.642653)
-    # goal_rotation = carla.Rotation(pitch=0, yaw=0, roll=0) 
-    gx, gy, gyaw0 = -50.468666, 174.412048, np.deg2rad(0.0)
+    sx, sy, syaw0 = 10.0, 7.0, np.deg2rad(120.0)
+    gx, gy, gyaw0 = 45.0, 20.0, np.deg2rad(90.0)
 
-    # TODO: figure out how to do this in CARLA
-    # ox, oy = design_obstacles(x, y)
-    # ox, oy = detect_obstacles(start_x, end_x, start_y, end_y)
+    ox, oy = design_obstacles(x, y)
 
     t0 = time.time()
-    car = None # Replace with Jake
-    hybrid_astar_planning(car, sx, sy, syaw0, gx, gy, gyaw0,
+    hybrid_astar_planning(sx, sy, syaw0, gx, gy, gyaw0,
                           ox, oy, C.XY_RESO, C.YAW_RESO)
     t1 = time.time()
     print("running T: ", t1 - t0)
 
-    # if not path:
-    #     print("Searching failed!")
-    #     return
 
 
 if __name__ == '__main__':
