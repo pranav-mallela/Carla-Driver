@@ -1,0 +1,5 @@
+ros-bridge/
+Warehouse-Release/
+*.gz
+*.tar
+CARLA_0.9.14-dirty/
