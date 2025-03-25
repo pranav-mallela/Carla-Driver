@@ -3,3 +3,6 @@ carla_dataset/
 yolo_dataset/
 .vscode/
 __pycache__/
+myenv/
+env/
+*.pt

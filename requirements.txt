@@ -5,3 +5,5 @@ ipykernel
 opencv-python
 ultralytics
 matplotlib
+heapdict
+scipy
