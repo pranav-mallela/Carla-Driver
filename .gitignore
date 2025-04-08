@@ -3,3 +3,8 @@ Warehouse-Release/
 *.gz
 *.tar
 CARLA_0.9.14-dirty/
+catkin_ws/build*
+catkin_ws/devel*
+catkin_ws/install*
+catkin_ws/logs*
+*log*
